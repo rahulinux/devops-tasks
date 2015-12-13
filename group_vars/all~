@@ -1,0 +1,13 @@
+---
+inv: './inventory/hosts'
+domain: xyz.com
+
+## Mongo
+mongodb_port: '27017'
+replica_set: 'rs1'
+
+## MySQL 
+mysql_opts: '--bind-address=0.0.0.0 --log-bin=/var/log/mysql/mysql-bin.log --binlog-do-db=newdatabase --server-id'
+mysql_port: '3301'
+mysql_old_root_password: ""
+mysql_root_password: "admin"

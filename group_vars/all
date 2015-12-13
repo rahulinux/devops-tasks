@@ -1,0 +1,44 @@
+---
+inv: './inventory/hosts'
+domain: xyz.com
+
+## Mongo
+mongodb_port: '27017'
+replica_set: 'rs1'
+mongo_nodes: '3'
+mongo_users:
+   - name: "shopsense"
+     pass: "admin"
+     db: "imdb_api"
+
+## MySQL 
+mysql_db: 'replica'
+mysql_opts: '--bind-address=0.0.0.0 --log-bin=/var/log/mysql/mysql-bin.log --binlog-do-db={{ mysql_db }} --server-id'
+mysql_port: '3306'
+mysql_nodes: '2'
+mysql_old_root_password: ""
+mysql_root_password: "admin"
+mysql_replica_user: 'slave'
+mysql_replica_pass: 'slave'
+
+# A list of the mysql users to be created
+# and their password and privileges:
+mysql_users:                              
+  - name: "{{ mysql_db }}"
+    host: localhost
+    pass: "{{ mysql_db }}"
+    priv: "{{ mysql_db }}.*:ALL"
+  - name: "{{ mysql_db }}"
+    host: "%"
+    pass: "{{ mysql_db }}"
+    priv: "{{ mysql_db }}.*:ALL"
+  - name: "shopsence"
+    host: "%"
+    pass: "admin"
+    priv: "*.*:ALL"
+
+
+## Redis & Sentinel
+redis_port: '6379'
+sentinel_port: '26379'
+

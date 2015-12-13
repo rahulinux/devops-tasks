@@ -1,0 +1,5 @@
+---
+
+   - debug: msg="{{ hostvars[groups.mysql[0]] }}"
+   - name: Configuring webapp
+     template: src=settings.py.j2 dest=/tmp/test.py

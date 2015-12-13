@@ -1,0 +1,16 @@
+---
+    - name: Clearing default file
+      file: path='/etc/redis/sentinel.conf' state=absent
+      ignore_errors: true
+
+    - set_fact: master_ip={{ hostvars[item]["ansible_ssh_host"] }}
+      when: "{{ item == groups.redis[0] }}"
+      with_items: groups.redis
+  
+    - name: Configuring sentinel
+      template: src=sentinel.conf.j2 dest=/etc/redis/sentinel.conf
+
+    - name: Restarting sentinel
+      shell: /bin/kill -9 $(/bin/ps -ef | /usr/bin/awk '!/awk/&&/{{ sentinel_port }}/{ print $2 }')
+  
+    - shell: nohup /usr/bin/redis-server /etc/redis/sentinel.conf --sentinel & 

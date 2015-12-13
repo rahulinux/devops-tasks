@@ -1,0 +1,7 @@
+port {{ sentinel_port }}
+daemonize yes
+sentinel monitor mymaster {{ master_ip }} {{ redis_port }} 2
+sentinel down-after-milliseconds mymaster 5000
+sentinel failover-timeout mymaster 10000
+sentinel parallel-syncs mymaster 1
+logfile /var/log/redis/redis-sentinel.log

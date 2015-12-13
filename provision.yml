@@ -1,0 +1,87 @@
+---
+
+  - hosts: localhost
+    connection: local
+    tasks:
+           # Creating Mongo Instances
+         - include: ./create_containers.yml
+           vars:
+              name: 'mongodb'
+              group_name: 'mongodb'
+              count: '3'
+              command: 'bash -c "/usr/sbin/sshd & /usr/bin/mongod --replSet {{ replica_set }} --logpath /var/log/mongodb.log" --port {{ mongodb_port }}'
+           tags:
+             - mongodb
+ 
+           # Creating MySQL Instances
+         - include: ./create_containers.yml
+           vars:
+              name: 'mysql'
+              group_name: 'mysql'
+              count: '2'
+              command: 'bash -c "/usr/sbin/sshd & /usr/sbin/mysqld {{ mysql_opts }}={{ item }}"' 
+           tags:
+             - mysql
+
+           # Creating Redis Instances
+         - include: ./create_containers.yml
+           vars:
+              name: 'redis'
+              group_name: 'redis'
+              count: '1'
+              command: 'bash -c "/usr/sbin/sshd -D & /usr/bin/redis-server /etc/redis/sentinel.conf --sentinel & /usr/bin/redis-server --port {{ redis_port }}"' 
+           tags:
+             - redis
+
+         - include: ./create_containers.yml
+           vars:
+              name: 'redis_slave'
+              group_name: 'redis'
+              count: '2'
+              command: 'bash -c "/usr/sbin/sshd -D & /usr/bin/redis-server /etc/redis/sentinel.conf --sentinel & /usr/bin/redis-server --port {{ redis_port }} --slaveof {{ hostvars[groups.redis[0]]["ansible_ssh_host"] }} {{ redis_port }}"' 
+           tags:
+             - redis
+
+         - include: ./create_containers.yml
+           vars:
+              name: 'web'
+              group_name: 'web'
+              count: '1'
+              command: 'bash -c "/usr/sbin/sshd -D && /usr/sbin/nginx"'
+              expose: '80' 
+              port: '0.0.0.0:80:80' 
+           tags:
+             - web
+
+         - name: Sort static inventory file
+           shell: s="$(sort -k1 inventory/hosts)" && echo "$s" > inventory/hosts
+ 
+  - hosts: mongodb
+    connection: ssh
+    roles:
+       - mongodb
+    tags:
+       - mongodb
+
+  - hosts: mysql
+    connection: ssh
+    remote_user: root
+    roles:
+        - mysql
+    tags:
+        - mysql
+
+  - hosts: redis
+    connection: ssh
+    roles:
+       - redis 
+    tags:
+       - redis
+
+  - hosts: web
+    connection: ssh
+    roles:
+       - web 
+    tags:
+       - web
+

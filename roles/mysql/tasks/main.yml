@@ -1,0 +1,77 @@
+---
+  - name: Waiting for mysql start
+    shell: "netstat -tulnp | grep {{ mysql_port }}"
+    register: mysql_satus
+    until: mysql_satus.stdout.find("{{mysql_port }}") != -1
+    ignore_errors: true 
+    retries: 10
+    delay: 10
+
+  - name: Setup MySQL Root Password
+    mysql_user: name=root
+              host=localhost
+              password="{{ mysql_root_password }}"
+              check_implicit_admin=yes
+              login_user=root
+              login_password="{{ mysql_old_root_password }}"
+              state=present
+    ignore_errors: true
+
+  - set_fact: master_ip={{ hostvars[item]["ansible_ssh_host"] }}
+    when: "{{ item == groups.mysql[0] }}"
+    with_items: groups.mysql
+
+  - name: Configuring mysql client
+    lineinfile: "dest='/root/.my.cnf' owner=root mode=0600 line='{{ item }}' regexp='^{{ item }}' create=yes"
+    with_items: 
+           - "[client]"
+           - "user = root"
+           - "password = {{ mysql_root_password }}"
+
+  - name: create the database users
+    mysql_user: name={{ item.name }} host={{ item.host }} password={{ item.pass }} priv={{ item.priv }} state=present
+    with_items: mysql_users
+    when: "{{ inventory_hostname == groups.mysql[0] }}"
+    ignore_errors: true
+
+  - name: create the replication users
+    mysql_user: name={{ mysql_replica_user }} host='%' password={{ mysql_replica_pass }}
+                  priv=*.*:"REPLICATION SLAVE" state=present
+    when: "{{ inventory_hostname == groups.mysql[0] }}"
+
+  - name: create the databases
+    mysql_db: name={{ mysql_db }} state=present
+    when: "{{ inventory_hostname == groups.mysql[0] }}"
+
+  - name: is already slave? 
+    mysql_replication: mode=getslave
+    ignore_errors: true
+    register: slave
+    when: "{{ inventory_hostname == groups.mysql[1] }}"
+
+  - name: master status 
+    mysql_replication: mode=getmaster
+    delegate_to: "{{ master_ip }}"
+    register: repl_stat
+    when: slave|failed and "{{ inventory_hostname == groups.mysql[1] }}"
+
+  - name: change the master in slave to start the replication
+    shell: echo 'CHANGE MASTER TO MASTER_HOST="{{ master_ip }}",MASTER_USER="{{ mysql_replica_user }}",MASTER_PASSWORD="{{ mysql_replica_pass }}",MASTER_LOG_FILE="{{ repl_stat.File }}",MASTER_LOG_POS={{ repl_stat.Position }}' | mysql
+    when: slave|failed and "{{ inventory_hostname == groups.mysql[1] }}" 
+    ignore_errors: True
+
+
+  #- name: change the master in slave to start the replication
+  #  mysql_replication: >
+  #    mode=changemaster
+  #    master_host={{ master_ip }}
+  #    master_user={{ mysql_replica_user }}
+  #    master_password={{ mysql_replica_pass }}
+  #    master_log_file={{ repl_stat.File }}
+  #    master_log_pos="{{ repl_stat.Position }}"
+  #  when: slave|failed and "{{ inventory_hostname == groups.mysql[1] }}" 
+  #  ignore_errors: True
+
+  - name: start replication
+    mysql_replication: mode=startslave
+    when: slave|failed and "{{ inventory_hostname == groups.mysql[1] }}" 

@@ -1,0 +1,74 @@
+---
+
+    - name: Creating Containers
+      docker:
+         image: 'base:latest'
+         hostname: '{{ name }}_{{ item }}'
+         name: '{{ name }}_{{ item }}'
+         state: running
+         command: '{{ command }}'
+         publish_all_ports: true
+         memory_limit: '256MB'
+         tty: yes
+         detach: yes
+      with_sequence: count='{{ count }}'
+      when: port is not defined
+      register: new_containers
+
+    - docker:
+         image: 'base:latest'
+         hostname: '{{ name }}_{{ item }}'
+         name: '{{ name }}_{{ item }}'
+         state: running
+         command: '{{ command }}'
+         publish_all_ports: true
+         memory_limit: '256MB'
+         tty: yes
+         detach: yes
+         expose: '{{ expose | default("0") }}' 
+         ports: '{{ port | default("0") }}' 
+      with_sequence: count='{{ count }}'
+      when: port is defined
+      register: new_containers_ports
+
+  
+    - name: Adding containers ip to group
+      add_host:
+           hostname: '{{ item["ansible_facts"]["docker_containers"][0]["Config"]["Hostname"] }}'
+           groups: '{{ group_name }}'
+           ansible_ssh_host: '{{ item["ansible_facts"]["docker_containers"][0]["NetworkSettings"]["IPAddress"] }}'
+           ansible_ssh_port: 22
+           ansible_ssh_user: root 
+           ansible_ssh_private_key_file: "./.ssh/ansible_id_rsa"
+      when: port is not defined
+      with_items: new_containers.results
+ 
+    - add_host:
+           hostname: '{{ item["ansible_facts"]["docker_containers"][0]["Config"]["Hostname"] }}'
+           groups: '{{ group_name }}'
+           ansible_ssh_host: '{{ item["ansible_facts"]["docker_containers"][0]["NetworkSettings"]["IPAddress"] }}'
+           ansible_ssh_port: 22
+           ansible_ssh_user: root 
+           ansible_ssh_private_key_file: "./.ssh/ansible_id_rsa"
+      when: port is defined
+      with_items: new_containers_ports.results
+   
+    - name: Adding hosts to static inventory
+      lineinfile: dest={{ inv }} line="[{{ group_name }}]" regexp="^\[{{group_name}}\]" create=true
+    
+    - lineinfile:
+           dest: '{{ inv }}'
+           insertafter: '^\[{{group_name}}\]'
+           regexp: '^{{ item["ansible_facts"]["docker_containers"][0]["Config"]["Hostname"] }}'
+           line: '{{ item["ansible_facts"]["docker_containers"][0]["Config"]["Hostname"]}} ansible_ssh_host={{ item["ansible_facts"]["docker_containers"][0]["NetworkSettings"]["IPAddress"] }} ansible_ssh_port=22 ansible_ssh_private_key_file=./.ssh/ansible_id_rsa ansible_ssh_user=root'
+      when: port is defined
+      with_items: new_containers_ports.results
+
+
+    - lineinfile:
+           dest: '{{ inv }}'
+           insertafter: '^\[{{group_name}}\]'
+           regexp: '^{{ item["ansible_facts"]["docker_containers"][0]["Config"]["Hostname"] }}'
+           line: '{{ item["ansible_facts"]["docker_containers"][0]["Config"]["Hostname"]}} ansible_ssh_host={{ item["ansible_facts"]["docker_containers"][0]["NetworkSettings"]["IPAddress"] }} ansible_ssh_port=22 ansible_ssh_private_key_file=./.ssh/ansible_id_rsa ansible_ssh_user=root'
+      when: port is not defined
+      with_items: new_containers.results

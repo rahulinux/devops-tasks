@@ -1,0 +1,55 @@
+---
+
+   - hosts: localhost
+     connection: local
+     tasks:
+        - name: Update apt
+          apt: update_cache=yes cache_valid_time=3600 
+
+        - name: Install dependences 
+          apt: pkg={{item}}
+          with_items:
+            - libcurl4-openssl-dev
+            - python-pip
+            - python-dev
+
+        - shell: dpkg --list | grep -i docker-engine
+          register: docker_pkg
+
+        - name: Installing Docker
+          shell: curl -sSL https://get.docker.com/ | bash
+          when: docker_pkg.rc != 0
+
+        - name: Installing docker py module
+          pip: name=docker-py==0.6.0
+
+        - name: Adding current user into docker group
+          user: name={{ lookup('env','SUDO_USER') }} groups=docker append=yes
+
+        - name: Restarting docker
+          service: name=docker state=restarted
+
+        - stat: path=./.ssh/ansible_id_rsa
+          register: key
+ 
+        - name: Creating ssh keys for docker containers
+          file: path=./.ssh state=directory
+          when: key.stat.exists == False
+
+        - shell: ssh-keygen -N '' -f ./.ssh/ansible_id_rsa
+          when: key.stat.exists == False
+      
+        - file: path=./.ssh/ansible_id_rsa mode=0600 owner={{ lookup('env','SUDO_USER')}} group={{ lookup('env','SUDO_USER') }}
+ 
+        - name: Building base image | WARN it will take max time.. 
+          docker_image: name=base state=build path="."
+
+        - name: Setting UP Docker Dynamic inventory plugin
+          file: state=directory path=./inventory
+
+        - lineinfile: 
+              dest=/etc/profile.d/docker.sh 
+              mode=0755 
+              regexp='^export DOCKER_HOST=unix:///var/run/docker.sock' 
+              line='export DOCKER_HOST=unix:///var/run/docker.sock' 
+              create=yes

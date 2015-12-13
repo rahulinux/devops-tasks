@@ -1,0 +1,37 @@
+---
+  - name: Waiting for mongo start
+    shell: "netstat -tulnp | grep {{ mongodb_port }}"
+    register: mongo_status
+    until: mongo_status.stdout.find("{{mongodb_port }}") != -1
+    ignore_errors: true 
+    retries: 10
+    delay: 10
+
+  - name: initiate a replica set
+    shell: mongo --eval 'rs.initiate()' --host {{ ansible_ssh_host}}
+    when: "{{ inventory_hostname == groups.mongodb[0] }}"
+
+  - set_fact: mongodb1='{{ ansible_hostname }}:{{mongodb_port }}'
+    when: "{{ inventory_hostname == groups.mongodb[0] }}"
+
+  - lineinfile: dest=/tmp/mongors line='{{ item }}' create=yes regexp='^{{ item }}'
+    when: "{{ inventory_hostname == groups.mongodb[0] }}"
+    with_items:
+         - 'var cfg = rs.conf()'
+         - 'cfg.members[0]["host"] = "{{ ansible_ssh_host }}"'
+         - rs.reconfig(cfg)
+
+  - shell: mongo < /tmp/mongors 
+    when: "{{ inventory_hostname == groups.mongodb[0] }}"
+
+  - name: Creating users in mongo
+    mongodb_user: database={{ item.db }} name={{ item.name }} password={{ item.pass }} state=present
+    with_items: mongo_users
+    when: "{{ inventory_hostname == groups.mongodb[0] }}"
+
+  - name: add a replica set member 
+    shell: "mongo --eval 'rs.add(\"{{ hostvars[item][\"ansible_ssh_host\"]}}:{{mongodb_port}}\")'"
+    when: "{{ inventory_hostname == groups.mongodb[0] }}"
+    #when: "{{ inventory_hostname == groups.mongodb[0] }} and {{ item != groups.mongodb[0] }}"
+    with_items: groups.mongodb
+
